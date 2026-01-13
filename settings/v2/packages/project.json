@@ -1,0 +1,24 @@
+{
+  "__version__": "1.0.6",
+  "physics": {
+    "collisionGroups": [
+      {
+        "index": 1,
+        "name": "ROLE"
+      },
+      {
+        "index": 2,
+        "name": "WALL"
+      }
+    ],
+    "collisionMatrix": {
+      "0": 1,
+      "1": 4,
+      "2": 2
+    },
+    "gravity": {
+      "y": 0
+    }
+  },
+  "custom_joint_texture_layouts": []
+}
