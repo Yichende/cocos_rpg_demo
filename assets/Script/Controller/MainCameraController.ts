@@ -31,6 +31,11 @@ export class CameraController extends Component {
   private camera!: Camera;
   private world!: Node;
 
+  public setMapsNode(mapsNode: Node) {
+    this.mapsNode = mapsNode;
+    this.onResolutionChange();
+  }
+
   public recalcBounds() {
     if (!this.mapsNode) {
       console.error("[CameraController] mapNode Not Found");
@@ -40,8 +45,8 @@ export class CameraController extends Component {
     const camera = this.getComponent(Camera)!;
     const halfViewHeight = camera.orthoHeight;
 
-    const visiableSize = view.getVisibleSize();
-    const aspect = visiableSize.width / visiableSize.height;
+    const visibleSize = view.getVisibleSize();
+    const aspect = visibleSize.width / visibleSize.height;
     const halfViewWidth = halfViewHeight * aspect;
 
     let minX = Infinity;
@@ -49,14 +54,10 @@ export class CameraController extends Component {
     let minY = Infinity;
     let maxY = -Infinity;
 
-    console.log(
-      "halfViewWidth",
-      halfViewWidth,
-      "halfViewHeight",
-      halfViewHeight
-    );
-
     const maps = this.mapsNode.getComponentsInChildren(TiledMap);
+    if (maps.length === 0) {
+      console.warn('[MapManager]: Maps Not Found');
+    }
 
     for (const tiledMap of maps) {
       const mapSize = tiledMap.getMapSize();
@@ -83,6 +84,7 @@ export class CameraController extends Component {
     this._minY = minY + halfViewHeight;
     this._maxY = maxY - halfViewHeight;
 
+    // 地图比视口小的兜底处理
     if (this._minX > this._maxX) {
       this._minX = this._maxX = (minX + maxX) / 2;
     }
@@ -111,13 +113,18 @@ export class CameraController extends Component {
       return;
     }
 
-    this.onResolutionChange();
+    // this.onResolutionChange();
   }
 
   protected lateUpdate(dt: number): void {
     if (!this.RoleNode) return;
     const RolePos = this.RoleNode.worldPosition.clone();
     const CameraPos = this.node.worldPosition.clone();
+
+    if (this._minX > this._maxX || this._minY > this._maxY) {
+      console.log("触发非法边界");
+      return;
+    }
 
     RolePos.x = Math.min(this._maxX, Math.max(this._minX, RolePos.x));
     RolePos.y = Math.min(this._maxY, Math.max(this._minY, RolePos.y));

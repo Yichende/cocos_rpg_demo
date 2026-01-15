@@ -96,11 +96,11 @@ export class MapController extends Component {
           this.prefabMap = GameDevelopment.prefabMap;
           //用了slice是为了删掉名称后面的<TiledMap>
           const mapName = this.map.name.slice(0, -10);
-          console.log("开始处理地图", mapName);
+          // console.log("开始处理地图", mapName);
           //如果要合并不同图层的碰撞体，则先将所有图层的瓦块碰撞体添加到碰撞体节点表中
           if (this.mergeDifferentLayers) {
             const time1 = Date.now();
-            console.log("获取瓦块碰撞体耗时", time1 - timeBegin);
+            // console.log("获取瓦块碰撞体耗时", time1 - timeBegin);
             this.layers.forEach((layer) => {
               if (layer.node.active === true) {
                 this.addCollider(layer);
@@ -109,18 +109,18 @@ export class MapController extends Component {
             const time2 = Date.now();
             if (this.mergeCollider) {
               //然后获取所有碰撞点并计算出多边形碰撞数组
-              console.log("添加与合并碰撞体耗时", time2 - time1);
+              // console.log("添加与合并碰撞体耗时", time2 - time1);
               //优化多边形碰撞体
               this.optimizeAllPolygonPoints();
               const time3 = Date.now();
-              console.log("优化碰撞体耗时", time3 - time2);
+              // console.log("优化碰撞体耗时", time3 - time2);
               //添加碰撞体
               this.addColliderToMap();
               const time4 = Date.now();
-              console.log("添加碰撞体耗时", time4 - time3);
-              console.log("总耗时", time4 - timeBegin);
+              // console.log("添加碰撞体耗时", time4 - time3);
+              // console.log("总耗时", time4 - timeBegin);
             } else {
-              console.log("添加碰撞体耗时", time2 - time1);
+              // console.log("添加碰撞体耗时", time2 - time1);
             }
           } else {
             //如果不合并不同图层的碰撞体，就添加一次图层就获取一次碰撞体节点表
@@ -138,27 +138,27 @@ export class MapController extends Component {
                 this.Obstacle = layer.node.getChildByName("Obstacle");
                 //用了slice是为了删掉名称后面的<TiledLayer>
                 const layerName = layer.name.slice(0, -12);
-                console.log("开始处理图层", layerName);
+                // console.log("开始处理图层", layerName);
                 const time1 = Date.now();
                 this.addCollider(layer);
                 const time2 = Date.now();
-                console.log("初步添加碰撞体耗时", time2 - time1);
+                // console.log("初步添加碰撞体耗时", time2 - time1);
                 if (this.mergeCollider) {
                   //获取当前图层的碰撞点并计算出多边形碰撞数组
                   this.mergeAllColliders();
                   const time3 = Date.now();
-                  console.log("合并碰撞体耗时", time3 - time2);
+                  // console.log("合并碰撞体耗时", time3 - time2);
                   this.optimizeAllPolygonPoints();
                   const time4 = Date.now();
-                  console.log("优化碰撞体耗时", time4 - time3);
+                  // console.log("优化碰撞体耗时", time4 - time3);
                   this.addColliderToMap();
                   const time5 = Date.now();
-                  console.log("添加碰撞体耗时", time5 - time4);
+                  // console.log("添加碰撞体耗时", time5 - time4);
                 }
               }
             });
             const timeEnd = Date.now();
-            console.log("总耗时", timeEnd - timeBegin);
+            // console.log("总耗时", timeEnd - timeBegin);
           }
         },
         (err) => {

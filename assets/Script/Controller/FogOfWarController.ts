@@ -23,9 +23,6 @@ export class FogOfWarController extends Component {
   @property({ type: Node, tooltip: "World/role" })
   role: Node | null = null;
 
-  @property({ type: Node, tooltip: "所有子地图的父节点(World/maps)" })
-  mapsRoot: Node | null = null;
-
   @property({ tooltip: "迷雾图层名" })
   smogLayerName = "smog";
 
@@ -39,22 +36,26 @@ export class FogOfWarController extends Component {
   private lastMap: TiledMap | null = null;
   private lastTile: Vec2 | null = null;
   private _shadowEnabled = false; // 战争迷雾与阴影图层
+  private _mapRoot: Node | null = null;
 
   start() {
-    if (!this.role || !this.mapsRoot) {
-      console.error("FogOfWar: role 或 mapsRoot 未设置");
+    if (!this.role) {
+      console.error("FogOfWar: role 未设置");
       return;
     }
-
-    this.collectMaps();
 
     this.setEnabled(false);
   }
 
   update() {
-    if (!this._shadowEnabled) return;
+    if (!this._shadowEnabled || !this.role || this.maps.length === 0) return;
     this.updateFog();
     this.updateVisionShadow();
+  }
+
+  public setMapRoot(mapRoot: Node) {
+    this._mapRoot = mapRoot;
+    this.collectMaps();
   }
 
   // 启停Fog Shadow
@@ -89,28 +90,33 @@ export class FogOfWarController extends Component {
   private initShadowSize() {
     if (!this.visionShadow) return;
 
-    const sprite = this.visionShadow.getComponent(Sprite);
-    if (!sprite || !sprite.spriteFrame) {
-      console.warn("FogOfWarController: VisionShadow Sprite 未设置");
+    const ui = this.visionShadow.getComponent(UITransform);
+    if (!ui) {
+      console.warn("FogOfWarController: VisionShadow 缺少 UITransform");
       return;
     }
 
-    const texWidth = sprite.spriteFrame.rect.width;
-    const scale = (this.visionRadiusWorld * 2) / texWidth;
-    this.visionShadow.setScale(scale, scale, 1);
+    // 固定一个足够大的遮罩尺寸（推荐 2048 × 2048）
+    ui.setContentSize(2048, 2048);
+
+    // 使用原始比例，不再做基于视野半径的缩放
+    this.visionShadow.setScale(1, 1, 1);
   }
 
   /** 收集所有子地图 */
   private collectMaps() {
     this.maps = [];
 
-    for (const child of this.mapsRoot!.children) {
+    for (const child of this._mapRoot!.children) {
       const map = child.getComponent(TiledMap);
       if (!map) continue;
 
       const smog = map.getLayer(this.smogLayerName);
-      if (!smog) continue;
-      smog.node.active = true;
+      if (!smog) {
+        console.warn(`[FogOfWar]: ${child.name} 缺少smog图层`);
+        continue;
+      }
+      smog.node.active = this._shadowEnabled;
 
       const size = smog.getLayerSize();
       const explored = Array.from({ length: size.width }, () =>
@@ -120,8 +126,41 @@ export class FogOfWarController extends Component {
       this.maps.push({ map, smog, explored });
     }
 
+    this.lastMap = null;
+    this.lastTile = null;
+
     console.log(`FogOfWar: 已加载 ${this.maps.length} 个地图块`);
   }
+
+  // private buildMapFogData(mapNode: Node) {
+  //   const map = mapNode.getComponent(TiledMap);
+  //   if (!map) {
+  //     console.error("[FogOfWar]: MapRoot 上没有 TiledMap");
+  //     return;
+  //   }
+
+  //   const smog = map.getLayer(this.smogLayerName);
+  //   if (!smog) {
+  //     console.error(`[FogOfWar]: ${mapNode.name} 缺少smog图层`);
+  //     return;
+  //   }
+
+  //   const size = smog.getLayerSize();
+  //   const explored = Array.from({ length: size.width }, () =>
+  //     Array(size.height).fill(false)
+  //   );
+
+  //   this._mapData = {
+  //     map,
+  //     smog,
+  //     explored,
+  //   };
+
+  //   smog.node.active = this._shadowEnabled;
+
+  //   // this.lastMap = null;
+  //   this.lastTile = null;
+  // }
 
   /** 更新迷雾（仅当前所在地图） */
   private updateFog() {
@@ -138,8 +177,7 @@ export class FogOfWarController extends Component {
       return;
     }
 
-    // this.reveal(mapData, tilePos.x, tilePos.y);
-    this.revealWithWorldRadius(mapData.map, tilePos.x, tilePos.y);
+    this.revealWithWorldRadius(mapData, tilePos.x, tilePos.y);
 
     this.lastMap = mapData.map;
     this.lastTile = tilePos;
@@ -147,7 +185,7 @@ export class FogOfWarController extends Component {
 
   /** 找到角色当前所在的地图块 */
   private findCurrentMap(): MapFogData | null {
-    const pos = this.role!.worldPosition;
+    const pos = this.role!.worldPosition.clone();
 
     for (const data of this.maps) {
       const ui = data.map.node.getComponent(UITransform)!;
@@ -182,25 +220,10 @@ export class FogOfWarController extends Component {
     return new Vec2(x, y);
   }
 
-  private revealWithWorldRadius(centerMap: TiledMap, cx: number, cy: number) {
-    const tileSize = centerMap.getTileSize();
-    const mapNode = centerMap.node;
-    const ui = mapNode.getComponent(UITransform)!;
+  private revealWithWorldRadius(mapData: MapFogData, cx: number, cy: number) {
+    const map = mapData.map;
+    const tileSize = map.getTileSize();
 
-    // 当前 tile → 世界坐标
-    const centerLocal = new Vec3(
-      (cx + 0.5) * tileSize.width,
-      (centerMap.getMapSize().height - cy - 0.5) * tileSize.height,
-      0
-    );
-
-    const originX = -centerMap.getMapSize().width * tileSize.width * 0.5;
-    const originY = -centerMap.getMapSize().height * tileSize.height * 0.5;
-
-    centerLocal.x += originX;
-    centerLocal.y += originY;
-
-    // const centerWorld = ui.convertToWorldSpaceAR(centerLocal);
     const centerWorld = this.role!.worldPosition.clone();
     const step = tileSize.width;
 
@@ -209,10 +232,6 @@ export class FogOfWarController extends Component {
     for (let dx = -r; dx <= r; dx += step) {
       for (let dy = -r; dy <= r; dy += step) {
         if (dx * dx + dy * dy > r * r) continue;
-
-        // const world = centerWorld.clone();
-        // world.x += dx * tileSize.width;
-        // world.y -= dy * tileSize.height;
         const world = new Vec3(centerWorld.x + dx, centerWorld.y + dy, 0);
 
         this.revealAtWorld(world);
@@ -223,29 +242,26 @@ export class FogOfWarController extends Component {
   // 清除迷雾
   private revealAtWorld(worldPos: Vec3) {
     for (const data of this.maps) {
-      const ui = data.map.node.getComponent(UITransform)!;
-      const rect = ui.getBoundingBoxToWorld();
+      const map = data.map;
+      const smog = data.smog;
+      const explored = data.explored;
 
-      if (!rect.contains(new Vec2(worldPos.x, worldPos.y))) {
-        continue;
-      }
+      const tilePos = this.worldToTile(map, worldPos);
+      const size = smog.getLayerSize();
 
-      const tilePos = this.worldToTile(data.map, worldPos);
-
-      const size = data.smog.getLayerSize();
       if (
         tilePos.x < 0 ||
         tilePos.y < 0 ||
         tilePos.x >= size.width ||
         tilePos.y >= size.height
       ) {
-        return;
+        continue;
       }
 
-      if (data.explored[tilePos.x][tilePos.y]) return;
+      if (explored[tilePos.x][tilePos.y]) return;
 
-      data.smog.setTileGIDAt(0, tilePos.x, tilePos.y);
-      data.explored[tilePos.x][tilePos.y] = true;
+      smog.setTileGIDAt(0, tilePos.x, tilePos.y);
+      explored[tilePos.x][tilePos.y] = true;
       return;
     }
   }
