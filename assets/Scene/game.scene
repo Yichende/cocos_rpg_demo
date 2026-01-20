@@ -6130,9 +6130,8 @@
     },
     "smogLayerName": "smog",
     "visionRadiusWorld": 200,
-    "visionShadow": {
-      "__id__": 181
-    },
+    "visionShadow": null,
+    "blockLayerName": "wall",
     "_id": "25/RoAd4RBGrHqR9yTmONb"
   },
   {

@@ -7,7 +7,7 @@ import {
   UITransform,
   Vec2,
   Vec3,
-  Sprite,
+  Rect,
 } from "cc";
 
 const { ccclass, property } = _decorator;
@@ -27,14 +27,15 @@ export class FogOfWarController extends Component {
   smogLayerName = "smog";
 
   @property({ tooltip: "视野半径（世界坐标，像素）" })
-  visionRadiusWorld = 200;
+  visionRadiusWorld = 150;
 
   @property({ type: Node, tooltip: "视野阴影节点(World/FogMask/VisionShadow)" })
   visionShadow: Node | null = null;
 
+  @property({ tooltip: "阻挡视野的图层名" })
+  blockLayerName = "wall";
+
   private maps: MapFogData[] = [];
-  private lastMap: TiledMap | null = null;
-  private lastTile: Vec2 | null = null;
   private _shadowEnabled = false; // 战争迷雾与阴影图层
   private _mapRoot: Node | null = null;
 
@@ -72,10 +73,7 @@ export class FogOfWarController extends Component {
       this.visionShadow.active = enabled;
     }
 
-    if (!enabled) {
-      this.lastMap = null;
-      this.lastTile = null;
-    } else {
+    if (enabled) {
       this.initShadowSize();
     }
   }
@@ -126,61 +124,166 @@ export class FogOfWarController extends Component {
       this.maps.push({ map, smog, explored });
     }
 
-    this.lastMap = null;
-    this.lastTile = null;
-
     console.log(`FogOfWar: 已加载 ${this.maps.length} 个地图块`);
   }
 
-  // private buildMapFogData(mapNode: Node) {
-  //   const map = mapNode.getComponent(TiledMap);
-  //   if (!map) {
-  //     console.error("[FogOfWar]: MapRoot 上没有 TiledMap");
-  //     return;
-  //   }
+  private transformX(dx: number, dy: number, octant: number): number {
+    switch (octant) {
+      case 0:
+        return dx;
+      case 1:
+        return dy;
+      case 2:
+        return dy;
+      case 3:
+        return dx;
+      case 4:
+        return -dx;
+      case 5:
+        return -dy;
+      case 6:
+        return -dy;
+      case 7:
+        return -dx;
+      default:
+        return 0;
+    }
+  }
 
-  //   const smog = map.getLayer(this.smogLayerName);
-  //   if (!smog) {
-  //     console.error(`[FogOfWar]: ${mapNode.name} 缺少smog图层`);
-  //     return;
-  //   }
+  private transformY(dx: number, dy: number, octant: number): number {
+    switch (octant) {
+      case 0:
+        return dy;
+      case 1:
+        return dx;
+      case 2:
+        return -dx;
+      case 3:
+        return -dy;
+      case 4:
+        return -dy;
+      case 5:
+        return -dx;
+      case 6:
+        return dx;
+      case 7:
+        return dy;
+      default:
+        return 0;
+    }
+  }
 
-  //   const size = smog.getLayerSize();
-  //   const explored = Array.from({ length: size.width }, () =>
-  //     Array(size.height).fill(false)
-  //   );
+  private castLight(
+    mapData: MapFogData,
+    origin: Vec2,
+    row: number,
+    startSlope: number,
+    endSlope: number,
+    radius: number,
+    octant: number
+  ) {
+    if (startSlope < endSlope) return;
 
-  //   this._mapData = {
-  //     map,
-  //     smog,
-  //     explored,
-  //   };
+    const map = mapData.map;
+    const smog = mapData.smog;
+    const explored = mapData.explored;
 
-  //   smog.node.active = this._shadowEnabled;
+    let nextStartSlope = startSlope;
 
-  //   // this.lastMap = null;
-  //   this.lastTile = null;
-  // }
+    for (let distance = row; distance <= radius; distance++) {
+      let blocked = false;
 
-  /** 更新迷雾（仅当前所在地图） */
-  private updateFog() {
-    const mapData = this.findCurrentMap();
-    if (!mapData) return;
+      for (let dx = -distance, dy = -distance; dx <= 0; dx++) {
+        const lSlope = (dx - 0.5) / (dy + 0.5);
+        const rSlope = (dx + 0.5) / (dy - 0.5);
 
-    const tilePos = this.worldToTile(mapData.map, this.role!.worldPosition);
+        if (rSlope > startSlope) continue;
+        if (lSlope < endSlope) break;
 
-    if (
-      this.lastMap === mapData.map &&
-      this.lastTile &&
-      tilePos.equals(this.lastTile)
-    ) {
-      return;
+        const tileX = origin.x + this.transformX(dx, dy, octant);
+        const tileY = origin.y + this.transformY(dx, dy, octant);
+
+        if (
+          tileX < 0 ||
+          tileY < 0 ||
+          tileX >= smog.getLayerSize().width ||
+          tileY >= smog.getLayerSize().height
+        ) {
+          continue;
+        }
+
+        // 距离检测（圆形）
+        if (dx * dx + dy * dy <= radius * radius) {
+          smog.setTileGIDAt(0, tileX, tileY);
+          explored[tileX][tileY] = true;
+        }
+
+        const isWall = this.isBlocked(map, tileX, tileY);
+
+        if (blocked) {
+          if (isWall) {
+            nextStartSlope = rSlope;
+            continue;
+          } else {
+            blocked = false;
+            startSlope = nextStartSlope;
+          }
+        } else {
+          if (isWall && distance < radius) {
+            blocked = true;
+            this.castLight(
+              mapData,
+              origin,
+              distance + 1,
+              startSlope,
+              lSlope,
+              radius,
+              octant
+            );
+            nextStartSlope = rSlope;
+          }
+        }
+      }
+
+      if (blocked) break;
+    }
+  }
+
+  private revealByShadowCasting(
+    mapData: MapFogData,
+    origin: Vec2,
+    radiusTiles: number
+  ) {
+    // 8 个象限
+    for (let octant = 0; octant < 8; octant++) {
+      this.castLight(mapData, origin, 1, 1.0, 0.0, radiusTiles, octant);
+    }
+  }
+
+  // 判断某个 tile 是否阻挡视野
+  private isBlocked(map: TiledMap, x: number, y: number): boolean {
+    const blockLayer = map.getLayer(this.blockLayerName);
+    if (!blockLayer) return false;
+
+    const size = blockLayer.getLayerSize();
+
+    // 越界的tile视为阻挡，而不是阻挡的tile本身
+    if (x < 0 || y < 0 || x >= size.width || y >= size.height) {
+      return true;
     }
 
-    this.revealWithWorldRadius(mapData, tilePos.x, tilePos.y);
+    return blockLayer.getTileGIDAt(x, y) !== 0;
+  }
 
-    this.lastMap = mapData.map;
-    this.lastTile = tilePos;
+  // 更新迷雾
+  private updateFog() {
+    const current = this.findCurrentMap();
+    if (!current || !this.role) return;
+
+    for (const mapData of this.maps) {
+      const isCurrentMap = mapData === current;
+      this.revealMapWithWorldVision(mapData, isCurrentMap);
+    }
   }
 
   /** 找到角色当前所在的地图块 */
@@ -220,49 +323,44 @@ export class FogOfWarController extends Component {
     return new Vec2(x, y);
   }
 
-  private revealWithWorldRadius(mapData: MapFogData, cx: number, cy: number) {
+  /**
+   * 根据角色的世界视野进行迷雾清除
+   */
+  private revealMapWithWorldVision(mapData: MapFogData, isCurrentMap: boolean) {
     const map = mapData.map;
-    const tileSize = map.getTileSize();
+    const smog = mapData.smog;
+    const explored = mapData.explored;
 
-    const centerWorld = this.role!.worldPosition.clone();
-    const step = tileSize.width;
-
+    const rolePos = this.role!.worldPosition;
     const r = this.visionRadiusWorld;
 
-    for (let dx = -r; dx <= r; dx += step) {
-      for (let dy = -r; dy <= r; dy += step) {
-        if (dx * dx + dy * dy > r * r) continue;
-        const world = new Vec3(centerWorld.x + dx, centerWorld.y + dy, 0);
+    const tileSize = map.getTileSize();
+    const visionRadiusTiles = Math.floor(
+      this.visionRadiusWorld / Math.min(tileSize.width, tileSize.height)
+    );
 
-        this.revealAtWorld(world);
-      }
-    }
-  }
+    const ui = map.node.getComponent(UITransform)!;
+    const mapRect = ui.getBoundingBoxToWorld();
 
-  // 清除迷雾
-  private revealAtWorld(worldPos: Vec3) {
-    for (const data of this.maps) {
-      const map = data.map;
-      const smog = data.smog;
-      const explored = data.explored;
-
-      const tilePos = this.worldToTile(map, worldPos);
-      const size = smog.getLayerSize();
-
-      if (
-        tilePos.x < 0 ||
-        tilePos.y < 0 ||
-        tilePos.x >= size.width ||
-        tilePos.y >= size.height
-      ) {
-        continue;
-      }
-
-      if (explored[tilePos.x][tilePos.y]) return;
-
-      smog.setTileGIDAt(0, tilePos.x, tilePos.y);
-      explored[tilePos.x][tilePos.y] = true;
+    // Map 完全不在视野范围，跳过
+    if (
+      !mapRect.intersects(new Rect(rolePos.x - r, rolePos.y - r, r * 2, r * 2))
+    ) {
       return;
     }
+
+    let roleTile: Vec2 | null = null;
+    if (isCurrentMap) {
+      roleTile = this.worldToTile(map, rolePos);
+    }
+
+    if (!isCurrentMap || !roleTile) return;
+
+    // 角色所在 tile 必须可见
+    smog.setTileGIDAt(0, roleTile.x, roleTile.y);
+    explored[roleTile.x][roleTile.y] = true;
+
+    // Shadow Casting
+    this.revealByShadowCasting(mapData, roleTile, visionRadiusTiles);
   }
 }
