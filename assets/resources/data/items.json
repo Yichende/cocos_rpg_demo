@@ -1,0 +1,32 @@
+{
+  "1001": {
+    "name": "治疗药水",
+    "type": "consumable",
+    "desc": "恢复 50 点生命值。",
+    "iconPath": "prefab/ui/itemIcon/potion_healing",
+    "stack": 99,
+    "effect": { "heal": 50 }
+  },
+  "1002": {
+    "name": "魔力药水",
+    "type": "consumable",
+    "desc": "恢复 30 点魔力值。",
+    "iconPath": "prefab/ui/itemIcon/potion_magic",
+    "stack": 99,
+    "effect": { "mp": 30 }
+  },
+  "2001": {
+    "name": "金钥匙",
+    "type": "quest",
+    "desc": "一把看起来很重要的金色钥匙。",
+    "iconPath": "prefab/ui/itemIcon/key_gold",
+    "stack": 1
+  },
+  "2002": {
+    "name": "银钥匙",
+    "type": "quest",
+    "desc": "一把看起来很重要的银色钥匙。",
+    "iconPath": "prefab/ui/itemIcon/key_silver",
+    "stack": 1
+  }
+}

@@ -9,7 +9,7 @@ import {
   find,
 } from "cc";
 
-import { DialogueBubble } from "../DialogueBubble";
+import { DialogueBubble } from "../UI/DialogueBubble";
 import { DialogueLine, DIALOGUE } from "../Data/DialogData";
 import { RoleController } from "./RoleController";
 
